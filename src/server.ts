@@ -12,6 +12,16 @@ import {
   type ToolSet,
 } from "ai";
 import { z } from "zod";
+import type { TicketResult } from "./workflows/ticket";
+
+// Re-export the workflow and MCP agent so Cloudflare can find them
+export { TicketWorkflow } from "./workflows/ticket";
+import { SupportMCP } from "./mcp";
+export { SupportMCP };
+
+const mcpHandler = SupportMCP.serve("/mcp", { binding: "MCP" });
+
+const API_URL = "https://support-api.lauragift.workers.dev";
 
 export class ChatAgent extends AIChatAgent<Env> {
   async onChatMessage(
@@ -32,70 +42,48 @@ export class ChatAgent extends AIChatAgent<Env> {
         toolCalls: "before-last-2-messages",
       }),
       tools: {
-        // Server-side tool: runs automatically on the server
-        getWeather: tool({
-          description: "Get the current weather for a city",
+        // Support tools - call the real Support API backed by D1
+        lookupOrder: tool({
+          description: "Look up a customer order by order number",
           inputSchema: z.object({
-            city: z.string().describe("City name"),
+            orderId: z.string().describe("e.g. ORD-1234"),
           }),
-          execute: async ({ city }) => {
-            const conditions = ["sunny", "cloudy", "rainy", "snowy"];
-            const temp = Math.floor(Math.random() * 30) + 5;
-            return {
-              city,
-              temperature: temp,
-              condition:
-                conditions[Math.floor(Math.random() * conditions.length)],
-              unit: "celsius",
-            };
+          execute: async ({ orderId }) => {
+            const res = await fetch(`${API_URL}/api/orders/${orderId}`);
+            return res.json();
           },
         }),
 
-        // Client-side tool: no execute function - the browser handles it
-        getUserTimezone: tool({
-          description:
-            "Get the user's timezone from their browser. Use this when you need to know the user's local time.",
-          inputSchema: z.object({}),
-        }),
-
-        // Approval tool: requires user confirmation before executing
-        calculate: tool({
-          description:
-            "Perform a math calculation with two numbers. Requires user approval for large numbers.",
+        searchKnowledge: tool({
+          description: "Search the support knowledge base for answers",
           inputSchema: z.object({
-            a: z.number().describe("First number"),
-            b: z.number().describe("Second number"),
-            operator: z
-              .enum(["+", "-", "*", "/", "%"])
-              .describe("Arithmetic operator"),
+            query: z.string().describe("e.g. 'return policy'"),
           }),
-          needsApproval: async ({ a, b }) =>
-            Math.abs(a) > 1000 || Math.abs(b) > 1000,
-          execute: async ({ a, b, operator }) => {
-            const ops: Record<string, (x: number, y: number) => number> = {
-              "+": (x, y) => x + y,
-              "-": (x, y) => x - y,
-              "*": (x, y) => x * y,
-              "/": (x, y) => x / y,
-              "%": (x, y) => x % y,
-            };
-            if (operator === "/" && b === 0) {
-              return { error: "Division by zero" };
-            }
-            return {
-              expression: `${a} ${operator} ${b}`,
-              result: ops[operator](a, b),
-            };
+          execute: async ({ query }) => {
+            const res = await fetch(
+              `${API_URL}/api/knowledge?q=${encodeURIComponent(query)}`,
+            );
+            return res.json();
           },
         }),
 
-        // -----------------------------------------------------------------
-        // Exercise 3: Add support-specific tools here
-        // API base URL: https://support-api.lauragift.workers.dev
-        // -----------------------------------------------------------------
-        // 1. lookupOrder     - GET /api/orders/:orderId (server-side)
-        // 2. searchKnowledge - GET /api/knowledge?q=:query (server-side)
-        // 3. createTicket    - POST /api/tickets (approval, needsApproval)
+        createTicket: tool({
+          description: "Create a support ticket for the customer",
+          inputSchema: z.object({
+            subject: z.string(),
+            priority: z.enum(["low", "medium", "high"]),
+            description: z.string(),
+          }),
+          needsApproval: async () => true,
+          execute: async (params) => {
+            const res = await fetch(`${API_URL}/api/tickets`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(params),
+            });
+            return res.json();
+          },
+        }),
 
         // Schedule tools
         scheduleTask: tool({
@@ -147,6 +135,98 @@ export class ChatAgent extends AIChatAgent<Env> {
             }
           },
         }),
+
+        // Workflow tools
+        runTicketWorkflow: tool({
+          description:
+            "Run the ticket processing workflow to classify, attempt resolution, and escalate if needed. Use this when a support ticket needs to be processed.",
+          inputSchema: z.object({
+            ticketId: z.string().describe("The ticket ID to process"),
+            subject: z.string().describe("The ticket subject"),
+            priority: z
+              .enum(["low", "medium", "high"])
+              .describe("Ticket priority"),
+          }),
+          execute: async ({ ticketId, subject, priority }) => {
+            try {
+              const instanceId = await this.runWorkflow("TICKET_WORKFLOW", {
+                ticketId,
+                subject,
+                priority,
+              });
+              return {
+                status: "started",
+                instanceId,
+                message: `Workflow started for ticket ${ticketId}`,
+              };
+            } catch (error) {
+              return { status: "error", message: `${error}` };
+            }
+          },
+        }),
+
+        getWorkflowStatus: tool({
+          description: "Check the status of all running ticket workflows",
+          inputSchema: z.object({}),
+          execute: async () => {
+            const { workflows } = this.getWorkflows();
+            return workflows.map((w) => ({
+              id: w.workflowId,
+              name: w.workflowName,
+              status: w.status,
+              createdAt: w.createdAt.toISOString(),
+            }));
+          },
+        }),
+
+        approveWorkflowTool: tool({
+          description:
+            "Approve a workflow that is waiting for manager approval. Use this when a manager wants to approve a high-priority ticket.",
+          inputSchema: z.object({
+            instanceId: z
+              .string()
+              .describe("The workflow instance ID to approve"),
+            approvedBy: z
+              .string()
+              .describe("Name or ID of the person approving"),
+          }),
+          execute: async ({ instanceId, approvedBy }) => {
+            try {
+              await this.approveWorkflow(instanceId, {
+                reason: "Approved by manager",
+                metadata: { approvedBy },
+              });
+              return {
+                status: "approved",
+                message: `Workflow ${instanceId} approved by ${approvedBy}`,
+              };
+            } catch (error) {
+              return { status: "error", message: `${error}` };
+            }
+          },
+        }),
+
+        rejectWorkflowTool: tool({
+          description:
+            "Reject a workflow that is waiting for manager approval. Use this when a manager wants to reject a high-priority ticket.",
+          inputSchema: z.object({
+            instanceId: z
+              .string()
+              .describe("The workflow instance ID to reject"),
+            reason: z.string().describe("Reason for rejection"),
+          }),
+          execute: async ({ instanceId, reason }) => {
+            try {
+              await this.rejectWorkflow(instanceId, { reason });
+              return {
+                status: "rejected",
+                message: `Workflow ${instanceId} rejected: ${reason}`,
+              };
+            } catch (error) {
+              return { status: "error", message: `${error}` };
+            }
+          },
+        }),
       },
       onFinish,
       stopWhen: stepCountIs(5),
@@ -154,6 +234,51 @@ export class ChatAgent extends AIChatAgent<Env> {
     });
 
     return result.toUIMessageStreamResponse();
+  }
+
+  // Workflow lifecycle callbacks
+  async onWorkflowProgress(
+    _workflowName: string,
+    workflowId: string,
+    progress: { step: string; status: string; message: string },
+  ) {
+    this.broadcast(
+      JSON.stringify({
+        type: "workflow-progress",
+        workflowId,
+        ...progress,
+      }),
+    );
+  }
+
+  async onWorkflowComplete(
+    _workflowName: string,
+    workflowId: string,
+    result?: TicketResult,
+  ) {
+    console.log(`Workflow ${workflowId} completed:`, result);
+    this.broadcast(
+      JSON.stringify({
+        type: "workflow-complete",
+        workflowId,
+        result,
+      }),
+    );
+  }
+
+  async onWorkflowError(
+    _workflowName: string,
+    workflowId: string,
+    error: string,
+  ) {
+    console.error(`Workflow ${workflowId} failed:`, error);
+    this.broadcast(
+      JSON.stringify({
+        type: "workflow-error",
+        workflowId,
+        error,
+      }),
+    );
   }
 
   async executeTask(description: string, _task: Schedule<string>) {
@@ -170,7 +295,14 @@ export class ChatAgent extends AIChatAgent<Env> {
 }
 
 export default {
-  async fetch(request: Request, env: Env) {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+    const url = new URL(request.url);
+
+    // Handle MCP requests at /mcp
+    if (url.pathname.startsWith("/mcp")) {
+      return mcpHandler.fetch(request, env, ctx);
+    }
+
     return (
       (await routeAgentRequest(request, env)) ||
       new Response("Not found", { status: 404 })

@@ -25,15 +25,32 @@
 			{
 				"class_name": "ChatAgent",
 				"name": "ChatAgent"
+			},
+			{
+				"class_name": "SupportMCP",
+				"name": "MCP"
 			}
 		]
 	},
+	"workflows": [
+		{
+			"name": "ticket-workflow",
+			"binding": "TICKET_WORKFLOW",
+			"class_name": "TicketWorkflow"
+		}
+	],
 	"migrations": [
 		{
 			"new_sqlite_classes": [
 				"ChatAgent"
 			],
 			"tag": "v1"
+		},
+		{
+			"new_sqlite_classes": [
+				"SupportMCP"
+			],
+			"tag": "v2"
 		}
 	],
 	"observability": {
