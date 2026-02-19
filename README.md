@@ -1,5 +1,7 @@
 # Support Agent
 
+**[Workshop Slides](https://agents-workshop.lauragift.workers.dev/)**
+
 A customer support chat agent built on Cloudflare, powered by the [Agents SDK](https://developers.cloudflare.com/agents/). It looks up orders, searches a knowledge base, creates tickets with human-in-the-loop approval, processes tickets through a multi-step workflow, and exposes its capabilities as an MCP server.
 
 ## Features
