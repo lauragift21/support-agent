@@ -40,27 +40,27 @@ export class TicketWorkflow extends AgentWorkflow<
         retries: {
           limit: 3,
           delay: "5 seconds",
-          backoff: "exponential",
-        },
+          backoff: "exponential"
+        }
       },
       async () => {
         await this.reportProgress({
           step: "classify",
           status: "running",
-          message: `Classifying ticket: ${subject}`,
+          message: `Classifying ticket: ${subject}`
         });
 
         const res = (await this.env.AI.run("@cf/meta/llama-3-8b-instruct", {
-          prompt: `Classify this support ticket into one category (billing, technical, shipping, general). Just respond with the category name.\n\nSubject: ${subject}\nPriority: ${priority}`,
+          prompt: `Classify this support ticket into one category (billing, technical, shipping, general). Just respond with the category name.\n\nSubject: ${subject}\nPriority: ${priority}`
         })) as { response?: string };
         return { category: res.response ?? "general" };
-      },
+      }
     );
 
     await this.reportProgress({
       step: "classify",
       status: "complete",
-      message: `Classified as: ${classification.category}`,
+      message: `Classified as: ${classification.category}`
     });
 
     // Step 2: Attempt auto-resolution by searching knowledge base
@@ -68,11 +68,11 @@ export class TicketWorkflow extends AgentWorkflow<
       await this.reportProgress({
         step: "resolve",
         status: "running",
-        message: "Searching knowledge base for resolution...",
+        message: "Searching knowledge base for resolution..."
       });
 
       const res = await fetch(
-        `${API_URL}/api/knowledge?q=${encodeURIComponent(subject)}`,
+        `${API_URL}/api/knowledge?q=${encodeURIComponent(subject)}`
       );
       const data = (await res.json()) as {
         articles: { title: string; summary: string }[];
@@ -83,7 +83,7 @@ export class TicketWorkflow extends AgentWorkflow<
         resolved: hasMatch,
         suggestion: hasMatch
           ? data.articles[0].summary
-          : "No matching knowledge base article found",
+          : "No matching knowledge base article found"
       };
     });
 
@@ -92,7 +92,7 @@ export class TicketWorkflow extends AgentWorkflow<
       status: "complete",
       message: resolution.resolved
         ? `Auto-resolved: ${resolution.suggestion}`
-        : "Could not auto-resolve, escalating...",
+        : "Could not auto-resolve, escalating..."
     });
 
     // Step 3: Escalate if unresolved
@@ -101,7 +101,7 @@ export class TicketWorkflow extends AgentWorkflow<
         await this.reportProgress({
           step: "escalate",
           status: "running",
-          message: "Escalating to support team...",
+          message: "Escalating to support team..."
         });
 
         return { escalated: true, assignedTo: "support-team" };
@@ -113,26 +113,26 @@ export class TicketWorkflow extends AgentWorkflow<
       await this.reportProgress({
         step: "approval",
         status: "pending",
-        message: `High-priority ticket ${ticketId} requires manager approval`,
+        message: `High-priority ticket ${ticketId} requires manager approval`
       });
 
       try {
         const approvalData = await this.waitForApproval<{
           approvedBy?: string;
         }>(step, {
-          timeout: "7 days",
+          timeout: "7 days"
         });
 
         await this.reportProgress({
           step: "approval",
           status: "complete",
-          message: `Approved by: ${approvalData?.approvedBy ?? "manager"}`,
+          message: `Approved by: ${approvalData?.approvedBy ?? "manager"}`
         });
 
         const result: TicketResult = {
           ticketId,
           outcome: "refund-approved",
-          classification: classification.category,
+          classification: classification.category
         };
         await step.reportComplete(result);
         return result;
@@ -141,13 +141,13 @@ export class TicketWorkflow extends AgentWorkflow<
           await this.reportProgress({
             step: "approval",
             status: "complete",
-            message: "Approval rejected",
+            message: "Approval rejected"
           });
 
           const result: TicketResult = {
             ticketId,
             outcome: "refund-rejected",
-            classification: classification.category,
+            classification: classification.category
           };
           await step.reportComplete(result);
           return result;
@@ -159,7 +159,7 @@ export class TicketWorkflow extends AgentWorkflow<
     const result: TicketResult = {
       ticketId,
       outcome: resolution.resolved ? "auto-resolved" : "escalated",
-      classification: classification.category,
+      classification: classification.category
     };
 
     await step.reportComplete(result);

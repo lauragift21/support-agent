@@ -9,7 +9,7 @@ import {
   tool,
   stepCountIs,
   type StreamTextOnFinishCallback,
-  type ToolSet,
+  type ToolSet
 } from "ai";
 import { z } from "zod";
 import type { TicketResult } from "./workflows/ticket";
@@ -26,11 +26,11 @@ const API_URL = "https://support-api.lauragift.workers.dev";
 export class ChatAgent extends AIChatAgent<Env> {
   async onChatMessage(
     onFinish: StreamTextOnFinishCallback<ToolSet>,
-    options?: { abortSignal?: AbortSignal },
+    options?: { abortSignal?: AbortSignal }
   ) {
     const workersai = createWorkersAI({
       binding: this.env.AI,
-      gateway: { id: "support-agent" },
+      gateway: { id: "support-agent" }
     });
 
     const result = streamText({
@@ -39,32 +39,32 @@ export class ChatAgent extends AIChatAgent<Env> {
       system: `You are a friendly and knowledgeable support agent. Help users troubleshoot issues, answer questions clearly, and guide them step by step. Always be concise and professional.`,
       messages: pruneMessages({
         messages: await convertToModelMessages(this.messages),
-        toolCalls: "before-last-2-messages",
+        toolCalls: "before-last-2-messages"
       }),
       tools: {
         // Support tools - call the real Support API backed by D1
         lookupOrder: tool({
           description: "Look up a customer order by order number",
           inputSchema: z.object({
-            orderId: z.string().describe("e.g. ORD-1234"),
+            orderId: z.string().describe("e.g. ORD-1234")
           }),
           execute: async ({ orderId }) => {
             const res = await fetch(`${API_URL}/api/orders/${orderId}`);
             return res.json();
-          },
+          }
         }),
 
         searchKnowledge: tool({
           description: "Search the support knowledge base for answers",
           inputSchema: z.object({
-            query: z.string().describe("e.g. 'return policy'"),
+            query: z.string().describe("e.g. 'return policy'")
           }),
           execute: async ({ query }) => {
             const res = await fetch(
-              `${API_URL}/api/knowledge?q=${encodeURIComponent(query)}`,
+              `${API_URL}/api/knowledge?q=${encodeURIComponent(query)}`
             );
             return res.json();
-          },
+          }
         }),
 
         createTicket: tool({
@@ -72,17 +72,17 @@ export class ChatAgent extends AIChatAgent<Env> {
           inputSchema: z.object({
             subject: z.string(),
             priority: z.enum(["low", "medium", "high"]),
-            description: z.string(),
+            description: z.string()
           }),
           needsApproval: async () => true,
           execute: async (params) => {
             const res = await fetch(`${API_URL}/api/tickets`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(params),
+              body: JSON.stringify(params)
             });
             return res.json();
-          },
+          }
         }),
 
         // Schedule tools
@@ -109,7 +109,7 @@ export class ChatAgent extends AIChatAgent<Env> {
             } catch (error) {
               return `Error scheduling task: ${error}`;
             }
-          },
+          }
         }),
 
         getScheduledTasks: tool({
@@ -118,13 +118,13 @@ export class ChatAgent extends AIChatAgent<Env> {
           execute: async () => {
             const tasks = this.getSchedules();
             return tasks.length > 0 ? tasks : "No scheduled tasks found.";
-          },
+          }
         }),
 
         cancelScheduledTask: tool({
           description: "Cancel a scheduled task by its ID",
           inputSchema: z.object({
-            taskId: z.string().describe("The ID of the task to cancel"),
+            taskId: z.string().describe("The ID of the task to cancel")
           }),
           execute: async ({ taskId }) => {
             try {
@@ -133,7 +133,7 @@ export class ChatAgent extends AIChatAgent<Env> {
             } catch (error) {
               return `Error cancelling task: ${error}`;
             }
-          },
+          }
         }),
 
         // Workflow tools
@@ -145,24 +145,24 @@ export class ChatAgent extends AIChatAgent<Env> {
             subject: z.string().describe("The ticket subject"),
             priority: z
               .enum(["low", "medium", "high"])
-              .describe("Ticket priority"),
+              .describe("Ticket priority")
           }),
           execute: async ({ ticketId, subject, priority }) => {
             try {
               const instanceId = await this.runWorkflow("TICKET_WORKFLOW", {
                 ticketId,
                 subject,
-                priority,
+                priority
               });
               return {
                 status: "started",
                 instanceId,
-                message: `Workflow started for ticket ${ticketId}`,
+                message: `Workflow started for ticket ${ticketId}`
               };
             } catch (error) {
               return { status: "error", message: `${error}` };
             }
-          },
+          }
         }),
 
         getWorkflowStatus: tool({
@@ -174,9 +174,9 @@ export class ChatAgent extends AIChatAgent<Env> {
               id: w.workflowId,
               name: w.workflowName,
               status: w.status,
-              createdAt: w.createdAt.toISOString(),
+              createdAt: w.createdAt.toISOString()
             }));
-          },
+          }
         }),
 
         approveWorkflowTool: tool({
@@ -188,22 +188,22 @@ export class ChatAgent extends AIChatAgent<Env> {
               .describe("The workflow instance ID to approve"),
             approvedBy: z
               .string()
-              .describe("Name or ID of the person approving"),
+              .describe("Name or ID of the person approving")
           }),
           execute: async ({ instanceId, approvedBy }) => {
             try {
               await this.approveWorkflow(instanceId, {
                 reason: "Approved by manager",
-                metadata: { approvedBy },
+                metadata: { approvedBy }
               });
               return {
                 status: "approved",
-                message: `Workflow ${instanceId} approved by ${approvedBy}`,
+                message: `Workflow ${instanceId} approved by ${approvedBy}`
               };
             } catch (error) {
               return { status: "error", message: `${error}` };
             }
-          },
+          }
         }),
 
         rejectWorkflowTool: tool({
@@ -213,24 +213,24 @@ export class ChatAgent extends AIChatAgent<Env> {
             instanceId: z
               .string()
               .describe("The workflow instance ID to reject"),
-            reason: z.string().describe("Reason for rejection"),
+            reason: z.string().describe("Reason for rejection")
           }),
           execute: async ({ instanceId, reason }) => {
             try {
               await this.rejectWorkflow(instanceId, { reason });
               return {
                 status: "rejected",
-                message: `Workflow ${instanceId} rejected: ${reason}`,
+                message: `Workflow ${instanceId} rejected: ${reason}`
               };
             } catch (error) {
               return { status: "error", message: `${error}` };
             }
-          },
-        }),
+          }
+        })
       },
       onFinish,
       stopWhen: stepCountIs(5),
-      abortSignal: options?.abortSignal,
+      abortSignal: options?.abortSignal
     });
 
     return result.toUIMessageStreamResponse();
@@ -240,44 +240,44 @@ export class ChatAgent extends AIChatAgent<Env> {
   async onWorkflowProgress(
     _workflowName: string,
     workflowId: string,
-    progress: { step: string; status: string; message: string },
+    progress: { step: string; status: string; message: string }
   ) {
     this.broadcast(
       JSON.stringify({
         type: "workflow-progress",
         workflowId,
-        ...progress,
-      }),
+        ...progress
+      })
     );
   }
 
   async onWorkflowComplete(
     _workflowName: string,
     workflowId: string,
-    result?: TicketResult,
+    result?: TicketResult
   ) {
     console.log(`Workflow ${workflowId} completed:`, result);
     this.broadcast(
       JSON.stringify({
         type: "workflow-complete",
         workflowId,
-        result,
-      }),
+        result
+      })
     );
   }
 
   async onWorkflowError(
     _workflowName: string,
     workflowId: string,
-    error: string,
+    error: string
   ) {
     console.error(`Workflow ${workflowId} failed:`, error);
     this.broadcast(
       JSON.stringify({
         type: "workflow-error",
         workflowId,
-        error,
-      }),
+        error
+      })
     );
   }
 
@@ -288,8 +288,8 @@ export class ChatAgent extends AIChatAgent<Env> {
       JSON.stringify({
         type: "scheduled-task",
         description,
-        timestamp: new Date().toISOString(),
-      }),
+        timestamp: new Date().toISOString()
+      })
     );
   }
 }
@@ -307,5 +307,5 @@ export default {
       (await routeAgentRequest(request, env)) ||
       new Response("Not found", { status: 404 })
     );
-  },
+  }
 } satisfies ExportedHandler<Env>;

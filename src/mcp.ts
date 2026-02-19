@@ -11,7 +11,7 @@ const API_URL = "https://support-api.lauragift.workers.dev";
 export class SupportMCP extends McpAgent<Env, object, Record<string, unknown>> {
   server = new McpServer({
     name: "customer-support",
-    version: "1.0.0",
+    version: "1.0.0"
   });
 
   async init() {
@@ -27,11 +27,11 @@ export class SupportMCP extends McpAgent<Env, object, Record<string, unknown>> {
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(data, null, 2),
-            },
-          ],
+              text: JSON.stringify(data, null, 2)
+            }
+          ]
         };
-      },
+      }
     );
 
     // Expose knowledge base search tool
@@ -41,18 +41,18 @@ export class SupportMCP extends McpAgent<Env, object, Record<string, unknown>> {
       { query: z.string().describe("e.g. 'return policy'") },
       async ({ query }) => {
         const res = await fetch(
-          `${API_URL}/api/knowledge?q=${encodeURIComponent(query)}`,
+          `${API_URL}/api/knowledge?q=${encodeURIComponent(query)}`
         );
         const data = await res.json();
         return {
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(data, null, 2),
-            },
-          ],
+              text: JSON.stringify(data, null, 2)
+            }
+          ]
         };
-      },
+      }
     );
 
     // Expose ticket creation tool
@@ -62,24 +62,24 @@ export class SupportMCP extends McpAgent<Env, object, Record<string, unknown>> {
       {
         subject: z.string(),
         priority: z.enum(["low", "medium", "high"]),
-        description: z.string(),
+        description: z.string()
       },
       async (params) => {
         const res = await fetch(`${API_URL}/api/tickets`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(params),
+          body: JSON.stringify(params)
         });
         const data = await res.json();
         return {
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(data, null, 2),
-            },
-          ],
+              text: JSON.stringify(data, null, 2)
+            }
+          ]
         };
-      },
+      }
     );
   }
 }

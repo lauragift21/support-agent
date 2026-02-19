@@ -9,7 +9,7 @@ import {
   InputArea,
   Empty,
   Surface,
-  Text,
+  Text
 } from "@cloudflare/kumo";
 import { Toasty, useKumoToastManager } from "@cloudflare/kumo/components/toast";
 import { Streamdown } from "streamdown";
@@ -27,14 +27,14 @@ import {
   XCircleIcon,
   BrainIcon,
   CaretDownIcon,
-  BugIcon,
+  BugIcon
 } from "@phosphor-icons/react";
 
 // ── Small components ──────────────────────────────────────────────────
 
 function ThemeToggle() {
   const [dark, setDark] = useState(
-    () => document.documentElement.getAttribute("data-mode") === "dark",
+    () => document.documentElement.getAttribute("data-mode") === "dark"
   );
 
   const toggle = useCallback(() => {
@@ -61,7 +61,7 @@ function ThemeToggle() {
 
 function ToolPartView({
   part,
-  addToolApprovalResponse,
+  addToolApprovalResponse
 }: {
   part: UIMessage["parts"][number];
   addToolApprovalResponse: (response: {
@@ -198,7 +198,7 @@ function Chat() {
     onClose: useCallback(() => setConnected(false), []),
     onError: useCallback(
       (error: Event) => console.error("WebSocket error:", error),
-      [],
+      []
     ),
     onMessage: useCallback(
       (message: MessageEvent) => {
@@ -208,15 +208,15 @@ function Chat() {
             toasts.add({
               title: "Scheduled task completed",
               description: data.description,
-              timeout: 0,
+              timeout: 0
             });
           }
         } catch {
           // Not JSON or not our event
         }
       },
-      [toasts],
-    ),
+      [toasts]
+    )
   });
 
   const {
@@ -225,12 +225,12 @@ function Chat() {
     clearHistory,
     addToolApprovalResponse,
     stop,
-    status,
+    status
   } = useAgentChat({
     agent,
     onToolCall: async (_event) => {
       // Client-side tool handlers go here if needed
-    },
+    }
   });
 
   const isStreaming = status === "streaming" || status === "submitted";
@@ -315,7 +315,7 @@ function Chat() {
                     "What is the status of order ORD-1234?",
                     "What is your return policy?",
                     "Create a ticket for my broken keyboard",
-                    "Remind me in 5 minutes to follow up",
+                    "Remind me in 5 minutes to follow up"
                   ].map((prompt) => (
                     <Button
                       key={prompt}
@@ -325,7 +325,7 @@ function Chat() {
                       onClick={() => {
                         sendMessage({
                           role: "user",
-                          parts: [{ type: "text", text: prompt }],
+                          parts: [{ type: "text", text: prompt }]
                         });
                       }}
                     >
@@ -364,7 +364,7 @@ function Chat() {
                   .filter(
                     (part) =>
                       part.type === "reasoning" &&
-                      (part as { text?: string }).text?.trim(),
+                      (part as { text?: string }).text?.trim()
                   )
                   .map((part, i) => {
                     const reasoning = part as {
